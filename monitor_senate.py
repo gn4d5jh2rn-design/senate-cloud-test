@@ -128,19 +128,19 @@ def parse_ptr(page):
     return transactions
 
 
-def find_qualifying_groups(transactions):
-    purchases = [
+def find_qualifying_groups(transactions, transaction_kind):
+    matching_transactions = [
         transaction
         for transaction in transactions
         if transaction["transaction_type"]
         .strip()
         .lower()
-        .startswith("purchase")
+        .startswith(transaction_kind.lower())
     ]
 
     groups = {}
 
-    for index, transaction in enumerate(purchases):
+    for index, transaction in enumerate(matching_transactions):
         ticker = effective_ticker(
             transaction["ticker"],
             transaction["asset"]
@@ -531,74 +531,76 @@ with sync_playwright() as p:
 
                 transactions = parse_ptr(page)
 
-                qualifying = find_qualifying_groups(
-                    transactions
-                )
+                alert_types = [
+                    ("Purchase", "PURCHASE", "🟢"),
+                    ("Sale", "SALE", "🔴"),
+                ]
 
-                print(
-                    "Transactions:",
-                    len(transactions)
-                )
-
-                print(
-                    "Qualifying groups:",
-                    len(qualifying)
-                )
-
-                for group in qualifying:
-                    print()
-                    print("QUALIFYING PURCHASE")
-                    print(
-                        "Ticker:",
-                        group["ticker"] or
-                        "(no ticker)"
-                    )
-                    print(
-                        "Combined minimum:",
-                        f"${group['minimum_total']:,}"
-                    )
-                    print(
-                        "Transactions:",
-                        len(group["transactions"])
+                for transaction_kind, label, emoji in alert_types:
+                    qualifying = find_qualifying_groups(
+                        transactions,
+                        transaction_kind
                     )
 
-                    transaction_lines = []
+                    print(
+                        f"Qualifying {label.lower()} groups:",
+                        len(qualifying)
+                    )
 
-                    for transaction in group["transactions"]:
-                        transaction_lines.append(
-                            "\n".join([
-                                f"Asset: {transaction['asset']}",
-                                f"Asset type: {transaction['asset_type']}",
-                                f"Trade date: {transaction['date']}",
-                                f"Amount: {transaction['amount']}",
-                            ])
+                    for group in qualifying:
+                        print()
+                        print(f"QUALIFYING {label}")
+                        print(
+                            "Ticker:",
+                            group["ticker"] or
+                            "(no ticker)"
+                        )
+                        print(
+                            "Combined minimum:",
+                            f"${group['minimum_total']:,}"
+                        )
+                        print(
+                            "Transactions:",
+                            len(group["transactions"])
                         )
 
-                    ticker_display = (
-                        group["ticker"]
-                        or "(no ticker)"
-                    )
+                        transaction_lines = []
 
-                    message = (
-                        "🚨 LARGE SENATE PURCHASE\n\n"
-                        f"Member: {filing['member']}\n"
-                        "Chamber: Senate\n"
-                        f"Filed: {filing['filed_date']}\n"
-                        f"Ticker: {ticker_display}\n"
-                        f"Combined minimum disclosed: "
-                        f"${group['minimum_total']:,}\n"
-                        f"Transactions in filing: "
-                        f"{len(group['transactions'])}\n\n"
-                        + "\n\n".join(transaction_lines)
-                        + "\n\n"
-                        + f"Filing: {full_url}"
-                    )
+                        for transaction in group["transactions"]:
+                            transaction_lines.append(
+                                "\n".join([
+                                    f"Asset: {transaction['asset']}",
+                                    f"Asset type: {transaction['asset_type']}",
+                                    f"Trade date: {transaction['date']}",
+                                    f"Amount: {transaction['amount']}",
+                                ])
+                            )
 
-                    send_telegram(message)
+                        ticker_display = (
+                            group["ticker"]
+                            or "(no ticker)"
+                        )
 
-                    print(
-                        "Telegram purchase alert sent."
-                    )
+                        message = (
+                            f"{emoji} LARGE SENATE {label}\n\n"
+                            f"Member: {filing['member']}\n"
+                            "Chamber: Senate\n"
+                            f"Filed: {filing['filed_date']}\n"
+                            f"Ticker: {ticker_display}\n"
+                            f"Combined minimum disclosed: "
+                            f"${group['minimum_total']:,}\n"
+                            f"Transactions in filing: "
+                            f"{len(group['transactions'])}\n\n"
+                            + "\n\n".join(transaction_lines)
+                            + "\n\n"
+                            + f"Filing: {full_url}"
+                        )
+
+                        send_telegram(message)
+
+                        print(
+                            f"Telegram {label.lower()} alert sent."
+                        )
 
             # Only mark as seen after successful
             # processing.
